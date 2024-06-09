@@ -532,11 +532,12 @@ def solve_with_single_model_few_shot(
     MIXTRAL = "Mixtral" in model_name
     LLAMA = "Llama" in model_name
     SWALLOW = "Swallow" in model_name
+    PHI = "Phi" in model_name
 
     if COMMAND_R:
         prompt_maker = CommandRPromptMaker(label_columns=label_columns)
 
-    elif MIXTRAL or LLAMA:
+    elif MIXTRAL or LLAMA or PHI:
         prompt_maker = LlamaPromptMaker(label_columns=label_columns)
 
     elif SWALLOW:
