@@ -46,14 +46,14 @@ class BasePromptMaker:
         self.target_description = self.target_description[:-2]
 
     def generate_prompt(
-        self, context: str, examples: Optional[list[str]] = None
+        self, context: str, examples: Optional[list[tuple[str, str]]] = None
     ) -> str:
         examples = examples or []
 
         example_str = ""
-        for q, a in examples:
-            example_str += f"Context: {q}\nExample answer: {a}\n"
-            # example_str += f'入力: {q}\n応答: {a}\n\n'
+        for qa in examples:
+            q, a = qa
+            example_str += f"Example context: {q}\nExample answer: {a}\n\n"
 
         return self.template_summary.format(
             context=context,
@@ -269,9 +269,9 @@ kgなどの単位は削除すること。
         examples = examples or []
 
         example_str = ""
-        for q, a in examples:
-            example_str += f"### 入力:\n{q}\n\n### 応答:\n{a}\n\n"
-            # example_str += f'入力: {q}\n応答: {a}\n\n'
+        for i, qa in enumerate(examples):
+            q, a = qa
+            example_str += f"### 入力例{i+1}:\n{q}\n\n### 応答例{i+1}:\n{a}\n\n"
 
         return self.template_summary.format(
             context=context,
