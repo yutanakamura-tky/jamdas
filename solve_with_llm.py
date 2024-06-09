@@ -40,8 +40,10 @@ def get_args() -> argparse.Namespace:
 
     parser.add_argument("-m", "--model-name", dest="model_name", type=str)
     parser.add_argument(
-        "-e", "--experiment_name", dest="experiment_name", type=str, default=""
+        "-e", "--experiment-name", dest="experiment_name", type=str, default=""
     )
+    parser.add_argument("-4", "--4bit", dest="quant_4bit", action="store_true")
+    parser.add_argument("-8", "--8bit", dest="quant_8bit", action="store_true")
     parser.add_argument(
         "--overwrite",
         dest="overwrite",
@@ -57,13 +59,13 @@ def get_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "-R",
-        "--iter_random_state",
+        "--iter-random-state",
         dest="iter_random_state",
         action="store_true",
         default=False,
     )
     parser.add_argument("-n", "--shots", dest="n", type=int, default=5)
-    parser.add_argument("-l", "--max_length", dest="max_length", type=int, default=8192)
+    parser.add_argument("-l", "--max-length", dest="max_length", type=int, default=8192)
     parser.add_argument(
         "-L",
         "--max_completion_length",
@@ -389,16 +391,27 @@ For binary items, negative statement = 0, positive statement = 1.
 # flake8: noqa
 
 
-def load_model(model_name, max_length: int = 8192):
+def load_model(
+    model_name,
+    max_length: int = 8192,
+    quant_4bit: bool = False,
+    quant_8bit: bool = False,
+):
     accelerator = Accelerator()
 
-    quantization_config = BitsAndBytesConfig(
-        # load_in_4bit=True,
-        # bnb_4bit_quant_type="nf4",
-        # bnb_4bit_compute_dtype=torch.bfloat16,
-        # bnb_4bit_use_double_quant=True,
-        load_in_8bit=True,
-    )
+    if quant_4bit:
+        quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_use_double_quant=True,
+        )
+    elif quant_8bit:
+        quantization_config = BitsAndBytesConfig(
+            load_in_8bit=True,
+        )
+    else:
+        quantization_config = BitsAndBytesConfig()
 
     tokenizer = AutoTokenizer.from_pretrained(model_name, model_max_length=max_length)
     model = AutoModelForCausalLM.from_pretrained(
@@ -439,7 +452,9 @@ def solve_with_single_model_few_shot(
         raise ValueError("Invalid model names")
 
     # Load model
-    tokenizer, model, accelerator = load_model(model_name=model_name)
+    tokenizer, model, accelerator = load_model(
+        model_name=model_name, quant_4bit=args.quant_4bit, quant_8bit=args.quant_8bit
+    )
     logger.info(f"Loaded model {model_name}")
     logger.info(f"Device: {model.device}")
 
@@ -484,7 +499,7 @@ def solve_with_single_model_few_shot(
 
     logger.info(f"Start inference ...")
 
-    for i, target_context in tqdm(enumerate(target_contexts)):
+    for i, target_context in tqdm(enumerate(target_contexts), total=len(target_df)):
         if i < last_index:
             continue
 

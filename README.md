@@ -17,13 +17,14 @@ python solve_with_llm.py [options]
 
 例:
 ```bash
-python solve_with_llm.py \
+CUDA_VISIBLE_DEVICES=0 python solve_with_llm.py \
   --experiment-name="my_experiment" \
   --model-name="meta-llama/Meta-Llama-3-8B-Instruct" \
   --temperature=0.0 \
   --sampling-mode="comprehensive" \
   --random-state=42 \
-  --iter_random_state
+  --iter-random-state \
+  --4bit
 ```
 
 ### 2-1. Few-shot in-context learning
@@ -34,13 +35,19 @@ python solve_with_llm.py \
   - データフレームの上から5サンプルを取得します.
   - ただし推論対象と同一のサンプルは選ばれないようにします.
 
-- `--sampling-mode="comprehensive", --random-state=42 --iter_random_state`
+- `--sampling-mode="comprehensive", --random-state=42 --iter-random-state`
   - どのカラムも最低1サンプルはラベルが「1」になるまでサンプルを取得します.
   - ただし推論対象と同一のサンプルは選ばれないようにします.
   - `random-state` でサンプル時の乱数シードをコントロールします.
   - `iter-random-state` を渡すと `i`サンプル目の推論時の乱数シードを `random-state + i` に変更します.
 
-### 2-2. 実験管理
+### 2-2. 量子化
+
+`--4bit` を渡すとモデルを4bit量子化します.
+
+`--8bit` を渡すとモデルを8bit量子化します (ただし `--4bit` が優先されます).
+
+### 2-3. 実験管理
 
 `--experiment-name` で実験名を指定できます. 過去に同一の実験名がある場合, 途中から再開します.
 
