@@ -31,13 +31,14 @@ CUDA_VISIBLE_DEVICES=0 python solve_with_llm.py \
 
 `--sampling-mode` などで Few-shotのサンプルの選び方を指定します.
 
-- `--sampling-mode="first", -n=5`
+- `--sampling-mode="first" -n=5`
   - データフレームの上から5サンプルを取得します.
   - ただし推論対象と同一のサンプルは選ばれないようにします.
 
-- `--sampling-mode="comprehensive", --random-state=42 --iter-random-state`
+- `--sampling-mode="comprehensive" --random-state=42 --iter-random-state`
   - どのカラムも最低1サンプルはラベルが「1」になるまでサンプルを取得します.
   - ただし推論対象と同一のサンプルは選ばれないようにします.
+  - また, 抽選を10回行った時点で条件が満たされない場合はそこでサンプル取得を終了します.
   - `random-state` でサンプル時の乱数シードをコントロールします.
   - `iter-random-state` を渡すと `i`サンプル目の推論時の乱数シードを `random-state + i` に変更します.
 
