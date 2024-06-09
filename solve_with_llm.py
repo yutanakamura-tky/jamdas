@@ -189,6 +189,9 @@ def annotation_to_json_string(
 
 class BasePromptMaker:
     # flake8: noqa: W293
+    system_prompt = """
+"""
+
     template_summary = """
 {target_format}
 {example_text}
@@ -329,10 +332,12 @@ class BasePromptMaker:
 
 class LlamaPromptMaker(BasePromptMaker):
     # flake8: noqa: W293
-    template_summary = """
+    system_prompt = """
 System: Carefully analyze the following instruction, drawing upon your extensive knowledge and relevant references.
 Keep the answer short and do not provide explanations or notes.
+"""
 
+    template_summary = """
 Instructions:
 You task is to extract items from a medical record in the context, and return the results as JSON strings.
 If you don't find item in the context or you are not sure, skip the item. 
@@ -364,12 +369,14 @@ Answer:
 
 class CommandRPromptMaker(BasePromptMaker):
     # flake8: noqa: W293
-    template_summary = """
+    system_prompt = """
 # System Preamble
 ## Basic Rules
 You are a powerful conversational AI trained by Cohere to help people. You are augmented by a number of tools, and your job is to use and consume the output of these tools to best help the user. You will see a conversation history between yourself and a user, ending with an utterance from the user. You will then see a specific instruction instructing you what kind of response to generate. When you answer the user's requests, you cite your sources in your answers, according to those instructions.
 Carefully analyze the following instruction, drawing upon your extensive knowledge and relevant references.
+"""
 
+    template_summary = """
 # User Preamble
 ## Task
 You task is to extract items from a medical record in the context, and return the results as JSON strings.
@@ -401,23 +408,24 @@ For binary items, negative statement = 0, positive statement = 1.
 
 class SwallowPromptMaker(BasePromptMaker):
     # flake8: noqa: W293
-    template_summary = """
+    system_prompt = """
 以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。
 リクエストを適切に完了するための回答を記述してください。
-
+"""
+    template_summary = """
 ### 指示:
 入力された医療記録から情報を抽出し、結果をJSON文字列で返してください。
 情報が見つからない場合や、確信が持てない場合は、その項目を飛ばすこと。
 解答は簡潔にし、説明や注釈はつけないこと。
 
-フォーマット:
-- JSON文字列のみを1行で返す。
-- 複数のキーを持つ単一のJSONを出力する。
-- JSONキーは以下の項目のいずれかでなければならない。
-- JSONの値は、抽出された数値またはテキストとする。二値分類の場合、否定文 = 0、肯定文 = 1とすること。
-- kgなどの単位は削除すること。
+### フォーマット:
+JSON文字列のみを1行で返す。
+複数のキーを持つ単一のJSONを出力する。
+JSONキーは以下の項目のいずれかでなければならない。
+JSONの値は、抽出された数値またはテキストとする。二値分類の場合、否定文 = 0、肯定文 = 1とすること。
+kgなどの単位は削除すること。
 
-項目:
+### 項目:
 {target_format}
 
 {example_text}
@@ -604,6 +612,7 @@ def solve_with_single_model_few_shot(
                 )
 
         messages = [
+            {"role": "system", "content": prompt_maker.system_prompt},
             {
                 "role": "user",
                 "content": prompt_maker.generate_prompt_few_shots(
@@ -617,7 +626,7 @@ def solve_with_single_model_few_shot(
                     random_state=random_state,
                     iter_random_state=iter_random_state,
                 ),
-            }
+            },
         ]
 
         encoded_input = tokenizer.apply_chat_template(
