@@ -1,13 +1,13 @@
 # 使い方
 
-1. 準備
+## 1. 準備
 データを以下のパスに置いてください:
 
 - `jamdas/data/batch_0.csv`
 - `jamdas/data/batch_1.csv`
 
 
-2. 実験
+## 2. 実験
 
 以下のコマンドで実験を回せます:
 
@@ -49,7 +49,7 @@ python solve_with_llm.py --experiment-name="my_experiment" --overwrite # 最初�
   - `random-state` でサンプル時の乱数シードをコントロールします.
   - `iter-random-state` を渡すと `i`サンプル目の推論時の乱数シードを `random-state + i` に変更します.
 
-3. 結果の保存先
+## 3. 結果の保存先
 
 実験結果はリアルタイムで1サンプル推論ごとに保存されます.
 
