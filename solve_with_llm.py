@@ -565,7 +565,12 @@ def solve_with_single_model_few_shot(
         pred_df.to_csv(pred_df_save_path)
 
         df_metrics = pd.DataFrame(
-            evaluate_model(target_df.iloc[:i, :], pred_df.iloc[:i, :], fill_value=0)
+            evaluate_model(
+                target_df.iloc[:i, :],
+                pred_df.iloc[:i, :],
+                target_df.columns,
+                fill_value=0,
+            )
         )
         df_metrics.to_csv(df_metrics_save_path)
         logger.info(df_metrics)
