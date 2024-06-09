@@ -299,7 +299,14 @@ class BasePromptMaker:
         df_fill_status = ~reference_labels.isna()
         sample_idx = []
         n_filled_columns = df_fill_status.sum(axis=1)
+
+        MAX_TRIAL = 10
+        n_trial = 0
+
         while is_target_covered.sum() < len(is_target_covered):
+            if n_trial == MAX_TRIAL:
+                break
+
             sample = df_fill_status.sample(
                 n=1, weights=n_filled_columns, random_state=random_state
             ).iloc[0]
@@ -315,6 +322,8 @@ class BasePromptMaker:
                 :, is_target_covered[is_target_covered == False].index
             ]
             n_filled_columns = df_fill_status.sum(axis=1)
+
+            n_trial += 1
 
         return sample_idx
 
@@ -484,8 +493,9 @@ def solve_with_single_model_few_shot(
         raw_outputs = raw_outputs_df["raw_outputs"].values.tolist()
 
         pred_df = pd.read_csv(pred_df_save_path)
-        last_index = len(pred_df)
-        logger.info(f"Resume from sample ID: {last_index + 1}")
+        last_index = len(pred_df) - 1
+        logger.info(f"Last index: {last_index - 1}")
+        logger.info(f"Resume from sample ID: {last_index}")
 
         predictions = pred_df.to_dict(orient="records")
 
@@ -500,7 +510,7 @@ def solve_with_single_model_few_shot(
     logger.info(f"Start inference ...")
 
     for i, target_context in tqdm(enumerate(target_contexts), total=len(target_df)):
-        if i < last_index:
+        if i <= last_index:
             continue
 
         logger.info(f"=== Sample ID: {i} ===")
