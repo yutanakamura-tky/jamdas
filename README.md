@@ -26,16 +26,7 @@ python solve_with_llm.py \
   --iter_random_state
 ```
 
-`--experiment-name` で実験名を指定できます. 過去に同一の実験名がある場合, 途中から再開します.
-
-仕様上, 同一の実験名に使用するモデルは1種類だけにしてください.
-
-また, 途中から再開された場合, コマンドライン引数はすべて無視され, 過去の実験と同一のconfigが適用されます.
-
-```bash
-python solve_with_llm.py --experiment-name="my_experiment"
-python solve_with_llm.py --experiment-name="my_experiment" --overwrite # 最初からやり直す場合
-```
+### 2-1. Few-shot in-context learning
 
 `--sampling-mode` などで Few-shotのサンプルの選び方を指定します.
 
@@ -48,6 +39,21 @@ python solve_with_llm.py --experiment-name="my_experiment" --overwrite # 最初�
   - ただし推論対象と同一のサンプルは選ばれないようにします.
   - `random-state` でサンプル時の乱数シードをコントロールします.
   - `iter-random-state` を渡すと `i`サンプル目の推論時の乱数シードを `random-state + i` に変更します.
+
+### 2-2. 実験管理
+
+`--experiment-name` で実験名を指定できます. 過去に同一の実験名がある場合, 途中から再開します.
+
+仕様上, 同一の実験名に使用するモデルは1種類だけにしてください.
+
+また, 途中から再開された場合, コマンドライン引数はすべて無視され, 過去の実験と同一のconfigが適用されます.
+
+```bash
+python solve_with_llm.py --experiment-name="my_experiment"
+python solve_with_llm.py --experiment-name="my_experiment" --overwrite # 最初からやり直す場合
+```
+
+
 
 ## 3. 結果の保存先
 
