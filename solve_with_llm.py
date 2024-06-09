@@ -37,7 +37,7 @@ def get_args() -> argparse.Namespace:
         default=False,
     )
     parser.add_argument("-n", "--shots", dest="n", type=int, default=5)
-    parser.add_argiment(
+    parser.add_argument(
         "-s", "--sampling-mode", dest="sampling_mode", type=str, default="first"
     )
     parser.add_argument("-l", "--max_length", dest="max_length", type=int, default=8192)
@@ -76,8 +76,11 @@ experiment_name = args.experiment_name or time_now
 OUTPUT_DIR = Path("result") / experiment_name
 os.makedirs(OUTPUT_DIR, exist_ok=args.overwrite)
 
+with open(OUTPUT_DIR / "config.json", "w") as f:
+    f.write(json.dumps(vars(args), indent=4))
+
 logger = get_logger(name=__name__, log_save_path=OUTPUT_DIR / "solve_with_llm.log")
-logger.log(vars(args))
+logger.log(str(vars(args)))
 
 # Validate args
 logger.log("Validating command-line arguments...")
