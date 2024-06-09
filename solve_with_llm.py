@@ -444,7 +444,7 @@ def solve_with_single_model_few_shot(
     logger.info(f"Device: {model.device}")
 
     # Set save paths
-    raw_output_save_path = output_dir / "outputs.txt"
+    raw_output_save_path = output_dir / "outputs.csv"
 
     pred_df_save_path = output_dir / "pred.csv"
     logger.info(f"Save path (prediction result): {pred_df_save_path}")
@@ -576,7 +576,6 @@ def solve_with_single_model_few_shot(
                 )
             )
             df_metrics.to_csv(df_metrics_save_path)
-            logger.info(df_metrics)
         except ValueError as e:
             logger.warning(
                 f"Value error occurred during evaluation, so skip metric calculation: {e}"
