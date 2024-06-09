@@ -42,8 +42,8 @@ def get_args() -> argparse.Namespace:
     parser.add_argument(
         "-e", "--experiment-name", dest="experiment_name", type=str, default=""
     )
-    parser.add_argument("-4", "--4bit", dest="4bit", action="store_true")
-    parser.add_argument("-8", "--8bit", dest="8bit", action="store_true")
+    parser.add_argument("-4", "--4bit", dest="quant_4bit", action="store_true")
+    parser.add_argument("-8", "--8bit", dest="quant_8bit", action="store_true")
     parser.add_argument(
         "--overwrite",
         dest="overwrite",
@@ -452,7 +452,9 @@ def solve_with_single_model_few_shot(
         raise ValueError("Invalid model names")
 
     # Load model
-    tokenizer, model, accelerator = load_model(model_name=model_name)
+    tokenizer, model, accelerator = load_model(
+        model_name=model_name, quant_4bit=args.quant_4bit, quant_8bit=args.quant_8bit
+    )
     logger.info(f"Loaded model {model_name}")
     logger.info(f"Device: {model.device}")
 
@@ -497,7 +499,7 @@ def solve_with_single_model_few_shot(
 
     logger.info(f"Start inference ...")
 
-    for i, target_context in tqdm(enumerate(target_contexts)):
+    for i, target_context in tqdm(enumerate(target_contexts), total=len(target_df)):
         if i < last_index:
             continue
 
