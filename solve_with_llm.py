@@ -132,7 +132,7 @@ def main():
     )
     df = df.drop(["作業フラグ", "備考"], axis=1).reset_index(drop=True)
 
-    # Prepare prompt maker
+    # Define label columns
     non_label_columns = [
         "patient_id",
         "visit_id",
@@ -142,20 +142,19 @@ def main():
     ]
     label_columns = [column for column in df.columns if column not in non_label_columns]
 
+    # Solve
     logger.info(f"###### Solve with {args.model_name} ######")
-    raw_outputs, pred_df, df_metrics, referenced_sample_indexes = (
-        solve_with_single_model_few_shot(
-            df=df,
-            label_columns=label_columns,
-            model_name=args.model_name,
-            sampling_mode=args.sampling_mode,
-            n=args.n,
-            max_completion_length=args.max_completion_length,
-            random_state=args.random_state,
-            iter_random_state=args.iter_random_state,
-            temperature=args.temperature,
-            output_dir=OUTPUT_DIR,
-        )
+    solve_with_single_model_few_shot(
+        df=df,
+        label_columns=label_columns,
+        model_name=args.model_name,
+        sampling_mode=args.sampling_mode,
+        n=args.n,
+        max_completion_length=args.max_completion_length,
+        random_state=args.random_state,
+        iter_random_state=args.iter_random_state,
+        temperature=args.temperature,
+        output_dir=OUTPUT_DIR,
     )
 
 
