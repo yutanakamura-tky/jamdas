@@ -40,7 +40,7 @@ def get_args() -> argparse.Namespace:
 
     parser.add_argument("-m", "--model-name", dest="model_name", type=str)
     parser.add_argument(
-        "-e", "--experiment_name", dest="experiment_name", type=str, default=""
+        "-e", "--experiment-name", dest="experiment_name", type=str, default=""
     )
     parser.add_argument("-4", "--4bit", dest="4bit", action="store_true")
     parser.add_argument("-8", "--8bit", dest="8bit", action="store_true")
