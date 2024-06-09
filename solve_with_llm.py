@@ -189,6 +189,9 @@ def annotation_to_json_string(
 
 class BasePromptMaker:
     # flake8: noqa: W293
+    system_prompt = """
+"""
+
     template_summary = """
 {target_format}
 {example_text}
@@ -299,7 +302,15 @@ class BasePromptMaker:
         df_fill_status = ~reference_labels.isna()
         sample_idx = []
         n_filled_columns = df_fill_status.sum(axis=1)
+
+        MAX_TRIAL = 10
+        n_trial = 0
+
         while is_target_covered.sum() < len(is_target_covered):
+            n_trial += 1
+            if n_trial > MAX_TRIAL:
+                break
+
             sample = df_fill_status.sample(
                 n=1, weights=n_filled_columns, random_state=random_state
             ).iloc[0]
@@ -321,10 +332,12 @@ class BasePromptMaker:
 
 class LlamaPromptMaker(BasePromptMaker):
     # flake8: noqa: W293
-    template_summary = """
+    system_prompt = """
 System: Carefully analyze the following instruction, drawing upon your extensive knowledge and relevant references.
 Keep the answer short and do not provide explanations or notes.
+"""
 
+    template_summary = """
 Instructions:
 You task is to extract items from a medical record in the context, and return the results as JSON strings.
 If you don't find item in the context or you are not sure, skip the item. 
@@ -356,12 +369,14 @@ Answer:
 
 class CommandRPromptMaker(BasePromptMaker):
     # flake8: noqa: W293
-    template_summary = """
+    system_prompt = """
 # System Preamble
 ## Basic Rules
 You are a powerful conversational AI trained by Cohere to help people. You are augmented by a number of tools, and your job is to use and consume the output of these tools to best help the user. You will see a conversation history between yourself and a user, ending with an utterance from the user. You will then see a specific instruction instructing you what kind of response to generate. When you answer the user's requests, you cite your sources in your answers, according to those instructions.
 Carefully analyze the following instruction, drawing upon your extensive knowledge and relevant references.
+"""
 
+    template_summary = """
 # User Preamble
 ## Task
 You task is to extract items from a medical record in the context, and return the results as JSON strings.
@@ -389,6 +404,63 @@ For binary items, negative statement = 0, positive statement = 1.
 
 
 # flake8: noqa
+
+
+class SwallowPromptMaker(BasePromptMaker):
+    # flake8: noqa: W293
+    system_prompt = """
+以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。
+リクエストを適切に完了するための回答を記述してください。
+"""
+    template_summary = """
+### 指示:
+入力された医療記録から情報を抽出し、結果をJSON文字列で返してください。
+情報が見つからない場合や、確信が持てない場合は、その項目を飛ばすこと。
+解答は簡潔にし、説明や注釈はつけないこと。
+
+### フォーマット:
+JSON文字列のみを1行で返す。
+複数のキーを持つ単一のJSONを出力する。
+JSONキーは以下の項目のいずれかでなければならない。
+JSONの値は、抽出された数値またはテキストとする。二値分類の場合、否定文 = 0、肯定文 = 1とすること。
+kgなどの単位は削除すること。
+
+### 項目:
+{target_format}
+
+{example_text}
+
+### 入力:
+{context}
+
+### 応答:
+"""
+    # flake8: noqa
+
+    type_description = {"binary": "二値分類", "numeric": "小数", "text": "文字列"}
+    additional_desciption = {
+        "微熱": "「微熱」の表現が含まれる, または体温が 37.0 以上 37.4 以下である",
+        "高熱": "「高熱」の表現が含まれる, または体温が 38.0 以上である",
+        "体温": "最も高い体温を抽出する",
+        "筋肉痛": "関節痛を含む",
+        "咽頭痛": "咽頭違和感を含む",
+    }
+
+    def generate_prompt(
+        self, context: str, examples: Optional[list[str]] = None
+    ) -> str:
+        examples = examples or []
+
+        example_str = ""
+        for q, a in examples:
+            example_str += f"### 入力:\n{q}\n\n### 応答:\n{a}\n\n"
+            # example_str += f'入力: {q}\n応答: {a}\n\n'
+
+        return self.template_summary.format(
+            context=context,
+            example_text=example_str,
+            target_format=self.target_description,
+        )
 
 
 def load_model(
@@ -420,6 +492,24 @@ def load_model(
         quantization_config=quantization_config,
     )
     model = accelerator.prepare(model)
+
+    SWALLOW = "Swallow" in model_name
+
+    if SWALLOW:
+        chat_template = """
+{% for message in messages %}
+    {% if message['role'] == 'system' %}
+        {{ message['content'] + '\n'}}
+    {% elif message['role'] == 'user' %}
+        {{ message['content'] + '\n' }}
+    {% endif %}
+{% endfor %}
+"""
+        tokenizer.chat_template = chat_template
+        logger.info(
+            "*** Tokenizer has no chat template, so applied a new chat template ***"
+        )
+
     return tokenizer, model, accelerator
 
 
@@ -441,12 +531,17 @@ def solve_with_single_model_few_shot(
     COMMAND_R = "command-r" in model_name
     MIXTRAL = "Mixtral" in model_name
     LLAMA = "Llama" in model_name
+    SWALLOW = "Swallow" in model_name
+    PHI = "Phi" in model_name
 
     if COMMAND_R:
         prompt_maker = CommandRPromptMaker(label_columns=label_columns)
 
-    elif MIXTRAL or LLAMA:
+    elif MIXTRAL or LLAMA or PHI:
         prompt_maker = LlamaPromptMaker(label_columns=label_columns)
+
+    elif SWALLOW:
+        prompt_maker = SwallowPromptMaker(label_columns=label_columns)
 
     else:
         raise ValueError("Invalid model names")
@@ -484,8 +579,9 @@ def solve_with_single_model_few_shot(
         raw_outputs = raw_outputs_df["raw_outputs"].values.tolist()
 
         pred_df = pd.read_csv(pred_df_save_path)
-        last_index = len(pred_df)
-        logger.info(f"Resume from sample ID: {last_index + 1}")
+        last_index = len(pred_df) - 1
+        logger.info(f"Last index: {last_index - 1}")
+        logger.info(f"Resume from sample ID: {last_index}")
 
         predictions = pred_df.to_dict(orient="records")
 
@@ -500,7 +596,7 @@ def solve_with_single_model_few_shot(
     logger.info(f"Start inference ...")
 
     for i, target_context in tqdm(enumerate(target_contexts), total=len(target_df)):
-        if i < last_index:
+        if i <= last_index:
             continue
 
         logger.info(f"=== Sample ID: {i} ===")
@@ -517,6 +613,7 @@ def solve_with_single_model_few_shot(
                 )
 
         messages = [
+            {"role": "system", "content": prompt_maker.system_prompt},
             {
                 "role": "user",
                 "content": prompt_maker.generate_prompt_few_shots(
@@ -530,7 +627,7 @@ def solve_with_single_model_few_shot(
                     random_state=random_state,
                     iter_random_state=iter_random_state,
                 ),
-            }
+            },
         ]
 
         encoded_input = tokenizer.apply_chat_template(
