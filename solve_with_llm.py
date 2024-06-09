@@ -65,7 +65,7 @@ def get_args() -> argparse.Namespace:
         default=False,
     )
     parser.add_argument("-n", "--shots", dest="n", type=int, default=5)
-    parser.add_argument("-l", "--max_length", dest="max_length", type=int, default=8192)
+    parser.add_argument("-l", "--max-length", dest="max_length", type=int, default=8192)
     parser.add_argument(
         "-L",
         "--max_completion_length",
