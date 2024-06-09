@@ -45,6 +45,7 @@ def get_args() -> argparse.Namespace:
     parser.add_argument(
         "--overwrite",
         dest="overwrite",
+        action="store_true",
         default=False,
         help="Overwrite a result directory if an old experiment with the same experiment name exists. Resumes the same experiment if set to False.",
     )
@@ -443,7 +444,7 @@ def solve_with_single_model_few_shot(
     logger.info(f"Device: {model.device}")
 
     # Set save paths
-    raw_output_save_path = output_dir / "outputs.txt"
+    raw_output_save_path = output_dir / "outputs.csv"
 
     pred_df_save_path = output_dir / "pred.csv"
     logger.info(f"Save path (prediction result): {pred_df_save_path}")
@@ -464,8 +465,9 @@ def solve_with_single_model_few_shot(
 
     # If resume mode, load intermediate results
     if RESUME_MODE and os.path.exists(pred_df_save_path):
-        with open(raw_output_save_path) as f:
-            raw_outputs = f.readlines()
+        raw_outputs_df = pd.read_csv(raw_output_save_path)
+        raw_outputs = raw_outputs_df["raw_outputs"].values.tolist()
+
         pred_df = pd.read_csv(pred_df_save_path)
         last_index = len(pred_df)
         logger.info(f"Resume from sample ID: {last_index + 1}")
@@ -545,8 +547,8 @@ def solve_with_single_model_few_shot(
         raw_output = re.sub(r"[\s\S]*\[\/INST\]", "", decoded_output, 1)
         raw_output = re.sub(r"</s>", "", raw_output)
         raw_outputs.append(raw_output)
-        with open(raw_output_save_path, "w") as f:
-            f.writelines(raw_outputs)
+        raw_outputs_df = pd.DataFrame({"raw_outputs": raw_outputs})
+        raw_outputs_df.to_csv(raw_output_save_path)
 
         json_match = re.search(r"\{([^{}]*)\}", raw_output)
         if json_match:
@@ -564,11 +566,20 @@ def solve_with_single_model_few_shot(
         pred_df = pd.DataFrame(predictions)
         pred_df.to_csv(pred_df_save_path)
 
-        df_metrics = pd.DataFrame(
-            evaluate_model(target_df.iloc[:i, :], pred_df.iloc[:i, :], fill_value=0)
-        )
-        df_metrics.to_csv(df_metrics_save_path)
-        logger.info(df_metrics)
+        try:
+            df_metrics = pd.DataFrame(
+                evaluate_model(
+                    target_df.iloc[:i, :],
+                    pred_df.iloc[:i, :],
+                    target_df.columns,
+                    fill_value=0,
+                )
+            )
+            df_metrics.to_csv(df_metrics_save_path)
+        except ValueError as e:
+            logger.warning(
+                f"Value error occurred during evaluation, so skip metric calculation: {e}"
+            )
 
     del model, tokenizer
     gc.collect()
