@@ -402,29 +402,30 @@ For binary items, negative statement = 0, positive statement = 1.
 class SwallowPromptMaker(BasePromptMaker):
     # flake8: noqa: W293
     template_summary = """
-指示:
-医療記録から情報を抽出し、結果をJSON文字列で返してください。
+以下に、あるタスクを説明する指示があり、それに付随する入力が更なる文脈を提供しています。
+リクエストを適切に完了するための回答を記述してください。
+
+### 指示:
+入力された医療記録から情報を抽出し、結果をJSON文字列で返してください。
 情報が見つからない場合や、確信が持てない場合は、その項目を飛ばすこと。
 解答は簡潔にし、説明や注釈はつけないこと。
 
 フォーマット:
-JSON文字列のみを1行で返す。
-複数のキーを持つ単一のJSONを出力する。
-JSONキーは以下の項目のいずれかでなければならない。
-JSONの値は、抽出された数値またはテキストとする。二値分類の場合、否定文 = 0、肯定文 = 1とすること。
-kgなどの単位は削除すること。
+- JSON文字列のみを1行で返す。
+- 複数のキーを持つ単一のJSONを出力する。
+- JSONキーは以下の項目のいずれかでなければならない。
+- JSONの値は、抽出された数値またはテキストとする。二値分類の場合、否定文 = 0、肯定文 = 1とすること。
+- kgなどの単位は削除すること。
 
 項目:
 {target_format}
 
-###
-例:
-
 {example_text}
-###
 
-医療記録: {context}
-答え:  
+### 入力:
+{context}
+
+### 応答:
 """
     # flake8: noqa
 
@@ -444,7 +445,7 @@ kgなどの単位は削除すること。
 
         example_str = ""
         for q, a in examples:
-            example_str += f"医療記録: {q}\n答え: {a}\n"
+            example_str += f"### 入力:\n{q}\n\n### 応答:\n{a}\n\n"
             # example_str += f'入力: {q}\n応答: {a}\n\n'
 
         return self.template_summary.format(
@@ -483,6 +484,24 @@ def load_model(
         quantization_config=quantization_config,
     )
     model = accelerator.prepare(model)
+
+    SWALLOW = "Swallow" in model_name
+
+    if SWALLOW:
+        chat_template = """
+{% for message in messages %}
+    {% if message['role'] == 'system' %}
+        {{ message['content'] + '\n'}}
+    {% elif message['role'] == 'user' %}
+        {{ message['content'] + '\n' }}
+    {% endif %}
+{% endfor %}
+"""
+        tokenizer.chat_template = chat_template
+        logger.info(
+            "*** Tokenizer has no chat template, so applied a new chat template ***"
+        )
+
     return tokenizer, model, accelerator
 
 
