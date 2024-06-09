@@ -45,6 +45,7 @@ def get_args() -> argparse.Namespace:
     parser.add_argument(
         "--overwrite",
         dest="overwrite",
+        action="store_true",
         default=False,
         help="Overwrite a result directory if an old experiment with the same experiment name exists. Resumes the same experiment if set to False.",
     )
