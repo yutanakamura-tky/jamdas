@@ -17,7 +17,7 @@ python solve_with_llm.py [options]
 
 例:
 ```bash
-python solve_with_llm.py \
+CUDA_VISIBLE_DEVICES=0 python solve_with_llm.py \
   --experiment-name="my_experiment" \
   --model-name="meta-llama/Meta-Llama-3-8B-Instruct" \
   --temperature=0.0 \
@@ -41,7 +41,13 @@ python solve_with_llm.py \
   - `random-state` でサンプル時の乱数シードをコントロールします.
   - `iter-random-state` を渡すと `i`サンプル目の推論時の乱数シードを `random-state + i` に変更します.
 
-### 2-2. 実験管理
+### 2-2. 量子化
+
+`--4bit` を渡すとモデルを4bit量子化します.
+
+`--8bit` を渡すとモデルを8bit量子化します (ただし `--4bit` が優先されます).
+
+### 2-3. 実験管理
 
 `--experiment-name` で実験名を指定できます. 過去に同一の実験名がある場合, 途中から再開します.
 
