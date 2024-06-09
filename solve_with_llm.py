@@ -399,6 +399,64 @@ For binary items, negative statement = 0, positive statement = 1.
 # flake8: noqa
 
 
+class SwallowPromptMaker(BasePromptMaker):
+    # flake8: noqa: W293
+    template_summary = """
+システム:
+以下の指示に従い、あなたの幅広い知識と関連するを駆使して注意深く分析しなさい。
+解答は簡潔にし、説明や注釈はつけないこと。
+
+指示:
+あなたのタスクは、医療記録から項目を抽出し、結果をJSON文字列として返すことです。
+医療記録の中に情報が見つからない場合、または確信が持てない場合は、その項目を飛ばしてください。
+
+フォーマット:
+JSON文字列のみを1行で返す。
+複数のキーを持つ単一のJSONを出力する。
+JSONキーは以下の項目のいずれかでなければならない。
+JSONの値は、抽出された数値またはテキストです。
+kgなどの単位は削除してください。
+
+項目:
+{target_format}
+二値分類の場合、否定文 = 0、肯定文 = 1とすること。
+
+###
+例:
+
+{example_text}
+###
+
+医療記録: {context}
+答え:  
+"""
+
+    type_description = {"binary": "二値分類", "numeric": "小数", "text": "文字列"}
+    additional_desciption = {
+        "微熱": "「微熱」の表現が含まれる, または体温が 37.0 以上 37.4 以下である",
+        "高熱": "「高熱」の表現が含まれる, または体温が 38.0 以上である",
+        "体温": "最も高い体温を抽出する",
+        "筋肉痛": "関節痛を含む",
+        "咽頭痛": "咽頭違和感を含む",
+    }
+
+    def generate_prompt(
+        self, context: str, examples: Optional[list[str]] = None
+    ) -> str:
+        examples = examples or []
+
+        example_str = ""
+        for q, a in examples:
+            example_str += f"医療記録: {q}\n答え: {a}\n"
+            # example_str += f'入力: {q}\n応答: {a}\n\n'
+
+        return self.template_summary.format(
+            context=context,
+            example_text=example_str,
+            target_format=self.target_description,
+        )
+
+
 def load_model(
     model_name,
     max_length: int = 8192,
@@ -449,12 +507,16 @@ def solve_with_single_model_few_shot(
     COMMAND_R = "command-r" in model_name
     MIXTRAL = "Mixtral" in model_name
     LLAMA = "Llama" in model_name
+    SWALLOW = "Swallow" in model_name
 
     if COMMAND_R:
         prompt_maker = CommandRPromptMaker(label_columns=label_columns)
 
     elif MIXTRAL or LLAMA:
         prompt_maker = LlamaPromptMaker(label_columns=label_columns)
+
+    elif SWALLOW:
+        prompt_maker = SwallowPromptMaker(label_columns=label_columns)
 
     else:
         raise ValueError("Invalid model names")
