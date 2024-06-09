@@ -4,6 +4,7 @@ import gc
 import json
 import os
 import re
+from json import JSONEncoder
 from pathlib import Path
 from typing import Optional
 
@@ -23,9 +24,21 @@ from transformers import (
 from src.utils.logger import get_logger
 
 
+class NumpyJSONEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, np.int64):
+            return int(o)
+        elif isinstance(o, np.bool_):
+            return bool(o)
+        elif isinstance(o, np.ndarray):
+            return list(o)
+        return JSONEncoder.default(self, o)
+
+
 def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
 
+    parser.add_argument("-m", "--model-name", dest="model_name", type=str)
     parser.add_argument(
         "-e", "--experiment_name", dest="experiment_name", type=str, default=""
     )
@@ -33,7 +46,7 @@ def get_args() -> argparse.Namespace:
         "--overwrite",
         dest="overwrite",
         default=False,
-        help="Overwrite a result directory if an old experiment with the same experiment name exists",
+        help="Overwrite a result directory if an old experiment with the same experiment name exists. Resumes the same experiment if set to False.",
     )
     parser.add_argument(
         "-s", "--sampling-mode", dest="sampling_mode", type=str, default="first"
@@ -80,12 +93,26 @@ args = get_args()
 time_now = get_time_now()
 experiment_name = args.experiment_name or time_now
 OUTPUT_DIR = Path("result") / experiment_name
-os.makedirs(OUTPUT_DIR, exist_ok=args.overwrite)
+
+if os.path.exists(OUTPUT_DIR) and not args.overwrite:
+    RESUME_MODE = True
+    with open(OUTPUT_DIR / "config.json") as f:
+        args = argparse.Namespace(**json.loads(f.read()))
+        args.overwrite = False
+else:
+    RESUME_MODE = False
+
+args.experiment_time = time_now
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 with open(OUTPUT_DIR / "config.json", "w") as f:
     f.write(json.dumps(vars(args), indent=4))
 
 logger = get_logger(name=__name__, log_save_path=OUTPUT_DIR / "solve_with_llm.log")
+if RESUME_MODE:
+    logger.info(
+        f"### RESUME MODE ###: Command-line variables have been overloaded by previously saved config: {OUTPUT_DIR / 'config.json'}"
+    )
 print(vars(args))
 
 # Validate args
@@ -116,42 +143,21 @@ def main():
     ]
     label_columns = [column for column in df.columns if column not in non_label_columns]
 
-    model_names = [
-        "meta-llama/Meta-Llama-3-8B-Instruct",
-        "CohereForAI/c4ai-command-r-v01-4bit",
-        "mistralai/Mixtral-8x7B-Instruct-v0.1",
-    ]
-    output_prefixes = ["llama", "command_r", "mixtral"]
-
-    for model_name, output_prefix in zip(model_names, output_prefixes):
-        logger.info(f"###### Solve with {model_name} ######")
-        pred_df, df_metrics, referenced_sample_indexes = (
-            solve_with_single_model_few_shot(
-                df=df,
-                label_columns=label_columns,
-                model_name=model_name,
-                sampling_mode=args.sampling_mode,
-                n=args.n,
-                max_completion_length=args.max_completion_length,
-                random_state=args.random_state,
-                iter_random_state=args.iter_random_state,
-                temperature=args.temperature,
-            )
+    logger.info(f"###### Solve with {args.model_name} ######")
+    raw_outputs, pred_df, df_metrics, referenced_sample_indexes = (
+        solve_with_single_model_few_shot(
+            df=df,
+            label_columns=label_columns,
+            model_name=args.model_name,
+            sampling_mode=args.sampling_mode,
+            n=args.n,
+            max_completion_length=args.max_completion_length,
+            random_state=args.random_state,
+            iter_random_state=args.iter_random_state,
+            temperature=args.temperature,
+            output_dir=OUTPUT_DIR,
         )
-
-        pred_df_save_path = OUTPUT_DIR / f"{output_prefix}_pred.csv"
-        pred_df.to_csv(pred_df_save_path)
-        logger.info(f"Prediction results saved to {pred_df_save_path}")
-
-        df_metrics_save_path = OUTPUT_DIR / f"{output_prefix}_metrics.csv"
-        df_metrics.to_csv(df_metrics_save_path)
-        logger.info(f"Metrics saved to {df_metrics_save_path}")
-
-        referenced_sample_indexes_save_path = (
-            OUTPUT_DIR / f"{output_prefix}_referenced_sample_indexes.csv"
-        )
-        with open(referenced_sample_indexes_save_path, "w") as f:
-            f.write(json.dumps(referenced_sample_indexes))
+    )
 
 
 def annotation_to_json_string(
@@ -306,6 +312,7 @@ class BasePromptMaker:
                 :, is_target_covered[is_target_covered == False].index
             ]
             n_filled_columns = df_fill_status.sum(axis=1)
+
         return sample_idx
 
 
@@ -414,7 +421,9 @@ def solve_with_single_model_few_shot(
     temperature: float = None,
     top_p: Optional[float] = None,
     top_k: Optional[int] = None,
+    output_dir: Optional[str] = None,
 ):
+    # Set variables
     COMMAND_R = "command-r" in model_name
     MIXTRAL = "Mixtral" in model_name
     LLAMA = "Llama" in model_name
@@ -428,12 +437,43 @@ def solve_with_single_model_few_shot(
     else:
         raise ValueError("Invalid model names")
 
+    # Load model
     tokenizer, model, accelerator = load_model(model_name=model_name)
     logger.info(f"Loaded model {model_name}")
     logger.info(f"Device: {model.device}")
 
-    responses = []
-    reference_sample_indexes = []
+    # Set save paths
+    raw_output_save_path = output_dir / "outputs.txt"
+
+    pred_df_save_path = output_dir / "pred.csv"
+    logger.info(f"Save path (prediction result): {pred_df_save_path}")
+
+    df_metrics_save_path = OUTPUT_DIR / "metrics.csv"
+    logger.info(f"Save path (metrics): {df_metrics_save_path}")
+
+    reference_sample_indexes_save_path = OUTPUT_DIR / f"reference_sample_indexes.csv"
+    logger.info(
+        f"Save path (reference sample indexes): {reference_sample_indexes_save_path}"
+    )
+
+    # Initialize output values
+    last_index = 0
+    raw_outputs: list[str] = []
+    predictions: list[dict] = []
+    reference_sample_indexes: list[list[int]] = []
+
+    # If resume mode, load intermediate results
+    if RESUME_MODE and os.path.exists(pred_df_save_path):
+        with open(raw_output_save_path) as f:
+            raw_outputs = f.readlines()
+        pred_df = pd.read_csv(pred_df_save_path)
+        last_index = len(pred_df)
+        logger.info(f"Resume from sample ID: {last_index + 1}")
+
+        predictions = pred_df.to_dict(orient="records")
+
+        with open(reference_sample_indexes_save_path) as f:
+            reference_sample_indexes = json.loads(f.read())
 
     target_contexts, target_json, target_strings = annotation_to_json_string(
         df, label_columns
@@ -443,6 +483,9 @@ def solve_with_single_model_few_shot(
     logger.info(f"Start inference ...")
 
     for i, target_context in tqdm(enumerate(target_contexts)):
+        if i < last_index:
+            continue
+
         logger.info(f"=== Sample ID: {i} ===")
         if sampling_mode == "comprehensive":
             reference_sample_index: list[int] = prompt_maker.comprehensive_sample(
@@ -451,6 +494,10 @@ def solve_with_single_model_few_shot(
                 ignore_sample_index=i,
             )
             reference_sample_indexes.append(reference_sample_index)
+            with open(reference_sample_indexes_save_path, "w") as f:
+                f.write(
+                    json.dumps(reference_sample_indexes, indent=4, cls=NumpyJSONEncoder)
+                )
 
         messages = [
             {
@@ -495,30 +542,40 @@ def solve_with_single_model_few_shot(
             encoded_output[encoded_input.shape[-1] :], skip_special_tokens=True
         )
 
-        decoded_output = re.sub(r"[\s\S]*\[\/INST\]", "", decoded_output, 1)
-        decoded_output = re.sub(r"</s>", "", decoded_output)
-        json_match = re.search(r"\{([^{}]*)\}", decoded_output)
+        raw_output = re.sub(r"[\s\S]*\[\/INST\]", "", decoded_output, 1)
+        raw_output = re.sub(r"</s>", "", raw_output)
+        raw_outputs.append(raw_output)
+        with open(raw_output_save_path, "w") as f:
+            f.writelines(raw_outputs)
+
+        json_match = re.search(r"\{([^{}]*)\}", raw_output)
         if json_match:
             json_text = json_match.group(0)
             try:
-                responses.append(json.loads(json_text))
+                predictions.append(json.loads(json_text))
                 logger.info(json_text)
             except json.JSONDecodeError:
                 logger.warning("failed to parse", decoded_output)
-                responses.append({})
+                predictions.append({})
         else:
             logger.warning("no match", decoded_output)
-            responses.append({})
+            predictions.append({})
+
+        pred_df = pd.DataFrame(predictions)
+        pred_df.to_csv(pred_df_save_path)
+
+        df_metrics = pd.DataFrame(
+            evaluate_model(target_df.iloc[:i, :], pred_df.iloc[:i, :], fill_value=0)
+        )
+        df_metrics.to_csv(df_metrics_save_path)
+        logger.info(df_metrics)
 
     del model, tokenizer
     gc.collect()
     torch.cuda.empty_cache()
     accelerator.free_memory()
 
-    pred_df = pd.DataFrame(responses)
-    df_metrics = pd.DataFrame(evaluate_model(target_df, pred_df, fill_value=0))
-    logger.info(df_metrics)
-    return pred_df, df_metrics, reference_sample_indexes
+    return raw_outputs, pred_df, df_metrics, reference_sample_indexes
 
 
 def evaluate_model(target_df, prediction_df, target_cols, fill_value=0):
