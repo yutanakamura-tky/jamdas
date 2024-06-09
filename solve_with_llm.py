@@ -12,7 +12,7 @@ import pandas as pd
 import torch
 from accelerate import Accelerator
 from sklearn.metrics import confusion_matrix
-from tqdm.notebook import tqdm
+from tqdm import tqdm
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -27,6 +27,18 @@ def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
+        "-e", "--experiment_name", dest="experiment_name", type=str, default=""
+    )
+    parser.add_argument(
+        "--overwrite",
+        dest="overwrite",
+        default=False,
+        help="Overwrite a result directory if an old experiment with the same experiment name exists",
+    )
+    parser.add_argument(
+        "-s", "--sampling-mode", dest="sampling_mode", type=str, default="first"
+    )
+    parser.add_argument(
         "-r", "--random-state", dest="random_state", type=int, default=42
     )
     parser.add_argument(
@@ -37,9 +49,6 @@ def get_args() -> argparse.Namespace:
         default=False,
     )
     parser.add_argument("-n", "--shots", dest="n", type=int, default=5)
-    parser.add_argument(
-        "-s", "--sampling-mode", dest="sampling_mode", type=str, default="first"
-    )
     parser.add_argument("-l", "--max_length", dest="max_length", type=int, default=8192)
     parser.add_argument(
         "-L",
@@ -49,10 +58,10 @@ def get_args() -> argparse.Namespace:
         default=512,
     )
     parser.add_argument(
-        "-e", "--experiment_name", dest="experiment_name", type=str, default=""
+        "-t", "--temperature", dest="temperature", type=float, default=0.0
     )
-    parser.add_argument("--overwrite", dest="overwrite", default=False)
-
+    parser.add_argument("-p", "--top-p", dest="top_p", type=float)
+    parser.add_argument("-k", "--top-k", dest="top_k", type=int)
     args = parser.parse_args()
 
     return args
@@ -66,9 +75,6 @@ def get_time_now() -> str:
     return ft_now
 
 
-logging.set_verbosity_error()
-
-
 # Setup
 args = get_args()
 time_now = get_time_now()
@@ -80,10 +86,10 @@ with open(OUTPUT_DIR / "config.json", "w") as f:
     f.write(json.dumps(vars(args), indent=4))
 
 logger = get_logger(name=__name__, log_save_path=OUTPUT_DIR / "solve_with_llm.log")
-logger.log(str(vars(args)))
+print(vars(args))
 
 # Validate args
-logger.log("Validating command-line arguments...")
+logger.info("Validating command-line arguments...")
 accepted_sampling_modes = ["first", "comprehensive"]
 if args.sampling_mode not in accepted_sampling_modes:
     raise ValueError(f"args.sampling_mode must be either {accepted_sampling_modes}")
@@ -118,7 +124,7 @@ def main():
     output_prefixes = ["llama", "command_r", "mixtral"]
 
     for model_name, output_prefix in zip(model_names, output_prefixes):
-        logger.log(f"###### Solve with {model_name} ######")
+        logger.info(f"###### Solve with {model_name} ######")
         pred_df, df_metrics, referenced_sample_indexes = (
             solve_with_single_model_few_shot(
                 df=df,
@@ -126,19 +132,20 @@ def main():
                 model_name=model_name,
                 sampling_mode=args.sampling_mode,
                 n=args.n,
-                max_completion_length=args.max_compmletion_length,
+                max_completion_length=args.max_completion_length,
                 random_state=args.random_state,
                 iter_random_state=args.iter_random_state,
+                temperature=args.temperature,
             )
         )
 
         pred_df_save_path = OUTPUT_DIR / f"{output_prefix}_pred.csv"
         pred_df.to_csv(pred_df_save_path)
-        logger.log(f"Prediction results saved to {pred_df_save_path}")
+        logger.info(f"Prediction results saved to {pred_df_save_path}")
 
         df_metrics_save_path = OUTPUT_DIR / f"{output_prefix}_metrics.csv"
         df_metrics.to_csv(df_metrics_save_path)
-        logger.log(f"Metrics saved to {df_metrics_save_path}")
+        logger.info(f"Metrics saved to {df_metrics_save_path}")
 
         referenced_sample_indexes_save_path = (
             OUTPUT_DIR / f"{output_prefix}_referenced_sample_indexes.csv"
@@ -197,7 +204,7 @@ class BasePromptMaker:
         for col in self.label_columns:
             target_name, target_type = col.split("_")
             if target_type == "flg":
-                self.arget_category["binary"].append(target_name)
+                self.target_category["binary"].append(target_name)
             elif target_type == "num":
                 self.target_category["numeric"].append(target_name)
             else:
@@ -225,9 +232,8 @@ class BasePromptMaker:
             target_format=self.target_description,
         )
 
-    @classmethod
     def generate_prompt_few_shots(
-        cls,
+        self,
         context: str,
         reference_contexts: list[str],
         reference_labels: pd.DataFrame,
@@ -249,16 +255,18 @@ class BasePromptMaker:
         elif mode == "comprehensive":
             if iter_random_state:
                 random_state += int(ignore_sample_index)
-            sample_index = cls.comprehensive_sample(
+            sample_index = self.comprehensive_sample(
                 reference_labels,
                 random_state=random_state,
                 ignore_sample_index=ignore_sample_index,
             )
 
-        sampled_reference_contexts = reference_contexts[sample_index]
-        sampled_reference_strings = reference_label_strings[sample_index]
+        sampled_reference_contexts = np.array(reference_contexts)[sample_index].tolist()
+        sampled_reference_strings = np.array(reference_label_strings)[
+            sample_index
+        ].tolist()
 
-        prompt = cls.generate_prompt(
+        prompt = self.generate_prompt(
             context=context,
             examples=[
                 (context, string)
@@ -292,10 +300,10 @@ class BasePromptMaker:
                 continue
 
             sample_idx.append(sample.name)
-            filtered_sample = sample[sample is True]
+            filtered_sample = sample[sample == True]
             is_target_covered.update(filtered_sample)
             df_fill_status = df_fill_status.drop(sample.name, axis=0).loc[
-                :, is_target_covered[is_target_covered is False].index
+                :, is_target_covered[is_target_covered == False].index
             ]
             n_filled_columns = df_fill_status.sum(axis=1)
         return sample_idx
@@ -377,11 +385,11 @@ def load_model(model_name, max_length: int = 8192):
     accelerator = Accelerator()
 
     quantization_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16,
-        bnb_4bit_use_double_quant=True,
-        # load_in_8bit=True,
+        # load_in_4bit=True,
+        # bnb_4bit_quant_type="nf4",
+        # bnb_4bit_compute_dtype=torch.bfloat16,
+        # bnb_4bit_use_double_quant=True,
+        load_in_8bit=True,
     )
 
     tokenizer = AutoTokenizer.from_pretrained(model_name, model_max_length=max_length)
@@ -403,6 +411,9 @@ def solve_with_single_model_few_shot(
     max_completion_length: int = 512,
     random_state: int = 42,
     iter_random_state: bool = False,
+    temperature: float = None,
+    top_p: Optional[float] = None,
+    top_k: Optional[int] = None,
 ):
     COMMAND_R = "command-r" in model_name
     MIXTRAL = "Mixtral" in model_name
@@ -418,14 +429,21 @@ def solve_with_single_model_few_shot(
         raise ValueError("Invalid model names")
 
     tokenizer, model, accelerator = load_model(model_name=model_name)
+    logger.info(f"Loaded model {model_name}")
+    logger.info(f"Device: {model.device}")
 
     responses = []
     reference_sample_indexes = []
 
-    target_contexts, target_json, target_strings = annotation_to_json_string(df)
+    target_contexts, target_json, target_strings = annotation_to_json_string(
+        df, label_columns
+    )
     target_df = pd.DataFrame(target_json)
 
+    logger.info(f"Start inference ...")
+
     for i, target_context in tqdm(enumerate(target_contexts)):
+        logger.info(f"=== Sample ID: {i} ===")
         if sampling_mode == "comprehensive":
             reference_sample_index: list[int] = prompt_maker.comprehensive_sample(
                 reference_labels=target_df,
@@ -459,7 +477,10 @@ def solve_with_single_model_few_shot(
             generation_kwargs = {
                 "inputs": encoded_input,
                 "max_new_tokens": max_completion_length,
-                "do_sample": False,
+                "do_sample": temperature == 0.0,
+                "temperature": temperature if temperature > 0.0 else None,
+                "top_p": top_p if temperature > 0.0 else None,
+                "top_k": top_k if temperature > 0.0 else None,
             }
 
             if LLAMA:
@@ -481,12 +502,12 @@ def solve_with_single_model_few_shot(
             json_text = json_match.group(0)
             try:
                 responses.append(json.loads(json_text))
-                print(json_text)
+                logger.info(json_text)
             except json.JSONDecodeError:
-                print("failed to parse", decoded_output)
+                logger.warning("failed to parse", decoded_output)
                 responses.append({})
         else:
-            print("no match", decoded_output)
+            logger.warning("no match", decoded_output)
             responses.append({})
 
     del model, tokenizer
@@ -496,6 +517,7 @@ def solve_with_single_model_few_shot(
 
     pred_df = pd.DataFrame(responses)
     df_metrics = pd.DataFrame(evaluate_model(target_df, pred_df, fill_value=0))
+    logger.info(df_metrics)
     return pred_df, df_metrics, reference_sample_indexes
 
 
