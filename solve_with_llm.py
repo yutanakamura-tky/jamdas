@@ -304,7 +304,8 @@ class BasePromptMaker:
         n_trial = 0
 
         while is_target_covered.sum() < len(is_target_covered):
-            if n_trial == MAX_TRIAL:
+            n_trial += 1
+            if n_trial > MAX_TRIAL:
                 break
 
             sample = df_fill_status.sample(
@@ -322,8 +323,6 @@ class BasePromptMaker:
                 :, is_target_covered[is_target_covered == False].index
             ]
             n_filled_columns = df_fill_status.sum(axis=1)
-
-            n_trial += 1
 
         return sample_idx
 
