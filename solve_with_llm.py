@@ -430,6 +430,7 @@ kgなどの単位は削除してください。
 医療記録: {context}
 答え:  
 """
+    # flake8: noqa
 
     type_description = {"binary": "二値分類", "numeric": "小数", "text": "文字列"}
     additional_desciption = {
