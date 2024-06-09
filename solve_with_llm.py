@@ -42,6 +42,8 @@ def get_args() -> argparse.Namespace:
     parser.add_argument(
         "-e", "--experiment_name", dest="experiment_name", type=str, default=""
     )
+    parser.add_argument("-4", "--4bit", dest="4bit", action="store_true")
+    parser.add_argument("-8", "--8bit", dest="8bit", action="store_true")
     parser.add_argument(
         "--overwrite",
         dest="overwrite",
@@ -57,7 +59,7 @@ def get_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "-R",
-        "--iter_random_state",
+        "--iter-random-state",
         dest="iter_random_state",
         action="store_true",
         default=False,
@@ -389,16 +391,27 @@ For binary items, negative statement = 0, positive statement = 1.
 # flake8: noqa
 
 
-def load_model(model_name, max_length: int = 8192):
+def load_model(
+    model_name,
+    max_length: int = 8192,
+    quant_4bit: bool = False,
+    quant_8bit: bool = False,
+):
     accelerator = Accelerator()
 
-    quantization_config = BitsAndBytesConfig(
-        # load_in_4bit=True,
-        # bnb_4bit_quant_type="nf4",
-        # bnb_4bit_compute_dtype=torch.bfloat16,
-        # bnb_4bit_use_double_quant=True,
-        load_in_8bit=True,
-    )
+    if quant_4bit:
+        quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_use_double_quant=True,
+        )
+    elif quant_8bit:
+        quantization_config = BitsAndBytesConfig(
+            load_in_8bit=True,
+        )
+    else:
+        quantization_config = BitsAndBytesConfig()
 
     tokenizer = AutoTokenizer.from_pretrained(model_name, model_max_length=max_length)
     model = AutoModelForCausalLM.from_pretrained(

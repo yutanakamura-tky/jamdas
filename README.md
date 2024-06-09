@@ -23,7 +23,8 @@ python solve_with_llm.py \
   --temperature=0.0 \
   --sampling-mode="comprehensive" \
   --random-state=42 \
-  --iter_random_state
+  --iter-random-state \
+  --4bit
 ```
 
 ### 2-1. Few-shot in-context learning
@@ -34,7 +35,7 @@ python solve_with_llm.py \
   - データフレームの上から5サンプルを取得します.
   - ただし推論対象と同一のサンプルは選ばれないようにします.
 
-- `--sampling-mode="comprehensive", --random-state=42 --iter_random_state`
+- `--sampling-mode="comprehensive", --random-state=42 --iter-random-state`
   - どのカラムも最低1サンプルはラベルが「1」になるまでサンプルを取得します.
   - ただし推論対象と同一のサンプルは選ばれないようにします.
   - `random-state` でサンプル時の乱数シードをコントロールします.
