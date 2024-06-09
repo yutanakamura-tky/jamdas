@@ -1,55 +1,65 @@
-# What's this?
+# 使い方
 
-This is a template repository customized for quick set up of research projects.
+1. 準備
+データを以下のパスに置いてください:
 
-# Requirements
+- `jamdas/data/batch_0.csv`
+- `jamdas/data/batch_1.csv`
 
-- Python => 3.8
 
-# How to use this
+2. 実験
 
-1. Install Poetry:
+以下のコマンドで実験を回せます:
 
-```sh
-curl -sSL https://install.python-poetry.org | python3 -
+```bash
+python solve_with_llm.py [options]
 ```
 
-2. Change Config:
-
-```sh
-poetry config virtualenvs.in-project true
+例:
+```bash
+python solve_with_llm.py \
+  --experiment-name="my_experiment" \
+  --model-name="meta-llama/Meta-Llama-3-8B-Instruct" \
+  --temperature=0.0 \
+  --sampling-mode="comprehensive" \
+  --random-state=42 \
+  --iter_random_state
 ```
 
-3. Fill the blank in `pyproject.toml` with your favorite project name: 
+`--experiment-name` で実験名を指定できます. 過去に同一の実験名がある場合, 途中から再開します.
 
-```sh
-vi /path/to/project/pyproject.toml
+仕様上, 同一の実験名に使用するモデルは1種類だけにしてください.
+
+また, 途中から再開された場合, コマンドライン引数はすべて無視され, 過去の実験と同一のconfigが適用されます.
+
+```bash
+python solve_with_llm.py --experiment-name="my_experiment"
+python solve_with_llm.py --experiment-name="my_experiment" --overwrite # 最初からやり直す場合
 ```
 
-```
-(pyproject.toml)
+`--sampling-mode` などで Few-shotのサンプルの選び方を指定します.
 
-[tool.poetry]
-name = "" # REPLACE WITH YOUR FAVORITE PROJECT NAME
-...
-```
+- `--sampling-mode="first", -n=5`
+  - データフレームの上から5サンプルを取得します.
+  - ただし推論対象と同一のサンプルは選ばれないようにします.
 
-4. Update your project:
+- `--sampling-mode="comprehensive", --random-state=42 --iter_random_state`
+  - どのカラムも最低1サンプルはラベルが「1」になるまでサンプルを取得します.
+  - ただし推論対象と同一のサンプルは選ばれないようにします.
+  - `random-state` でサンプル時の乱数シードをコントロールします.
+  - `iter-random-state` を渡すと `i`サンプル目の推論時の乱数シードを `random-state + i` に変更します.
 
-```sh
-poetry update
-```
+3. 結果の保存先
 
-5. Install packages using Poetry:
+実験結果はリアルタイムで1サンプル推論ごとに保存されます.
 
-```sh
-cd /path/to/project
-poetry install
-```
+出力先ディレクトリ:
+- `--experiment-name` を指定した場合, `jamdas/result/{experiment-name}`
+- `--experiment-name` を指定しない場合, `jamdas/result/{yyyymmddhhmmss}`
 
-6. Install pre-commit hook:
-
-```sh
-cd /path/to/project
-pre-commit install
-```
+出力内容:
+- `config.json`
+- `outputs.csv`: モデルの応答文字列.
+- `pred.csv`: パージングした推論結果.
+- `metrics.csv`: ラベルごとの性能.
+- `reference_sample_indexes.csv`: `i`サンプル目のときのfew-shot例にどのサンプルが選ばれたか. `--sampling-mode="first"` のときは保存されません.
